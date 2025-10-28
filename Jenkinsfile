@@ -15,8 +15,15 @@ pipeline {
 
         stage('Checkout') {
             steps {
-                echo "Checking out code from SCM"
-                checkout scm  // THIS FIXES THE 'not in a git directory' ERROR
+                echo "Cloning repo and fetching all branches"
+                checkout([
+                    $class: 'GitSCM',
+                    branches: [[name: '*/main']],
+                    doGenerateSubmoduleConfigurations: false,
+                    extensions: [[$class: 'CloneOption', shallow: false, depth: 0, noTags: false]],
+                    userRemoteConfigs: [[url: 'https://github.com/msushmithareddy26/generic-app.git']]
+                ])
+                sh 'git fetch origin hotfix:hotfix || true' // Ensure hotfix branch exists locally
             }
         }
 
@@ -27,8 +34,9 @@ pipeline {
                         sh "git checkout main"
                         sh "git cherry-pick ${params.COMMIT_HASH}"
                     } catch (err) {
+                        // Log commit info and abort pipeline
                         sh "git log -1 --oneline ${params.COMMIT_HASH} || echo 'Commit not found'"
-                        echo "Cherry-pick Error: ${err}"
+                        echo "Cherry-pick Error: ${err.getMessage()}"
                         currentBuild.result = 'ABORTED'
                         error("Aborting pipeline due to cherry-pick failure")
                     }
@@ -40,7 +48,6 @@ pipeline {
             steps {
                 script {
                     sh "docker buildx create --use || true"
-
                     try {
                         parallel(
                             "AMD64 Build": {
@@ -51,7 +58,7 @@ pipeline {
                             }
                         )
                     } catch (err) {
-                        echo "Parallel Build Error: ${err}"
+                        echo "Parallel Build Error in ${env.STAGE_NAME}: ${err.getMessage()}"
                         currentBuild.result = 'ABORTED'
                         error("Aborting due to multi-arch build failure")
                     }

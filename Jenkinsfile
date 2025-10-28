@@ -12,6 +12,12 @@ pipeline {
 
     stages {
 
+        stage('Clean Workspace') {
+            steps {
+                deleteDir() // Deletes everything in the current workspace
+            }
+        }
+
         stage('Checkout') {
             steps {
                 git branch: 'main', url: 'https://github.com/msushmithareddy26/generic-app.git'

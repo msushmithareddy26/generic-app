@@ -1,6 +1,7 @@
 pipeline {
     agent any
 
+    // Parameter for hotfix commit hash
     parameters {
         string(name: 'COMMIT_HASH', defaultValue: '', description: 'Hotfix commit hash to cherry-pick')
     }
@@ -14,8 +15,8 @@ pipeline {
 
         stage('Checkout') {
             steps {
-                // Clone main branch of generic-app
-                git branch: 'main', url: 'https://github.com/msushmithareddy26/generic-app.git'
+                echo "Checking out code from SCM"
+                checkout scm  // THIS FIXES THE 'not in a git directory' ERROR
             }
         }
 
@@ -23,8 +24,7 @@ pipeline {
             steps {
                 script {
                     try {
-                        // Fetch hotfix branch and cherry-pick
-                        sh "git fetch origin hotfix"
+                        sh "git checkout main"
                         sh "git cherry-pick ${params.COMMIT_HASH}"
                     } catch (err) {
                         sh "git log -1 --oneline ${params.COMMIT_HASH} || echo 'Commit not found'"
@@ -39,24 +39,15 @@ pipeline {
         stage('Build Multi-Arch Images') {
             steps {
                 script {
-                    // Ensure buildx builder exists
                     sh "docker buildx create --use || true"
 
                     try {
                         parallel(
-                            "AMD64": {
-                                stage('Build AMD64') {
-                                    sh """
-                                        docker buildx build --platform linux/amd64 -t ${ECR_REPO}:${BUILD_NUMBER}-amd64 --load .
-                                    """
-                                }
+                            "AMD64 Build": {
+                                sh "docker buildx build --platform linux/amd64 -t ${ECR_REPO}:${BUILD_NUMBER}-amd64 --load ."
                             },
-                            "ARM64": {
-                                stage('Build ARM64') {
-                                    sh """
-                                        docker buildx build --platform linux/arm64 -t ${ECR_REPO}:${BUILD_NUMBER}-arm64 --load .
-                                    """
-                                }
+                            "ARM64 Build": {
+                                sh "docker buildx build --platform linux/arm64 -t ${ECR_REPO}:${BUILD_NUMBER}-arm64 --load ."
                             }
                         )
                     } catch (err) {
@@ -68,22 +59,27 @@ pipeline {
             }
         }
 
-        stage('Push to ECR') {
+        stage('Push Multi-Arch Images to ECR') {
             steps {
                 script {
-                    try {
-                        withCredentials([usernamePassword(credentialsId: 'ecr-creds', passwordVariable: 'AWS_SECRET_ACCESS_KEY', usernameVariable: 'AWS_ACCESS_KEY_ID')]) {
-                            sh """
+                    parallel(
+                        "Push AMD64": {
+                            withCredentials([usernamePassword(credentialsId: 'ecr-creds', usernameVariable: 'AWS_ACCESS_KEY_ID', passwordVariable: 'AWS_SECRET_ACCESS_KEY')]) {
+                                sh """
                                 aws ecr get-login-password --region ${AWS_REGION} | docker login --username AWS --password-stdin ${ECR_REPO}
                                 docker push ${ECR_REPO}:${BUILD_NUMBER}-amd64
+                                """
+                            }
+                        },
+                        "Push ARM64": {
+                            withCredentials([usernamePassword(credentialsId: 'ecr-creds', usernameVariable: 'AWS_ACCESS_KEY_ID', passwordVariable: 'AWS_SECRET_ACCESS_KEY')]) {
+                                sh """
+                                aws ecr get-login-password --region ${AWS_REGION} | docker login --username AWS --password-stdin ${ECR_REPO}
                                 docker push ${ECR_REPO}:${BUILD_NUMBER}-arm64
-                            """
+                                """
+                            }
                         }
-                    } catch (err) {
-                        echo "Push to ECR failed: ${err}"
-                        currentBuild.result = 'ABORTED'
-                        error("Aborting pipeline due to push failure")
-                    }
+                    )
                 }
             }
         }

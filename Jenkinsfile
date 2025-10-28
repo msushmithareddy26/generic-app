@@ -14,7 +14,8 @@ pipeline {
 
         stage('Checkout') {
             steps {
-                git branch: 'main', url: 'https://github.com/msushmithareddy26/Job-Posting-And-Application-Portal.git'
+                // Clone main branch of generic-app
+                git branch: 'main', url: 'https://github.com/msushmithareddy26/generic-app.git'
             }
         }
 
@@ -22,7 +23,8 @@ pipeline {
             steps {
                 script {
                     try {
-                        sh "git fetch origin"
+                        // Fetch hotfix branch and cherry-pick
+                        sh "git fetch origin hotfix"
                         sh "git cherry-pick ${params.COMMIT_HASH}"
                     } catch (err) {
                         sh "git log -1 --oneline ${params.COMMIT_HASH} || echo 'Commit not found'"
@@ -34,34 +36,53 @@ pipeline {
             }
         }
 
-        stage('Build and Push Multi-Arch Images') {
+        stage('Build Multi-Arch Images') {
             steps {
                 script {
-                    try {
-                        // Ensure multi-arch builder exists
-                        sh "docker buildx create --use || true"
+                    // Ensure buildx builder exists
+                    sh "docker buildx create --use || true"
 
-                        // Parallel build and push
+                    try {
                         parallel(
                             "AMD64": {
-                                sh """
-                                docker buildx build --platform linux/amd64 -t ${ECR_REPO}:${BUILD_NUMBER}-amd64 --load .
-                                aws ecr get-login-password --region ${AWS_REGION} | docker login --username AWS --password-stdin ${ECR_REPO}
-                                docker push ${ECR_REPO}:${BUILD_NUMBER}-amd64
-                                """
+                                stage('Build AMD64') {
+                                    sh """
+                                        docker buildx build --platform linux/amd64 -t ${ECR_REPO}:${BUILD_NUMBER}-amd64 --load .
+                                    """
+                                }
                             },
                             "ARM64": {
-                                sh """
-                                docker buildx build --platform linux/arm64 -t ${ECR_REPO}:${BUILD_NUMBER}-arm64 --load .
-                                aws ecr get-login-password --region ${AWS_REGION} | docker login --username AWS --password-stdin ${ECR_REPO}
-                                docker push ${ECR_REPO}:${BUILD_NUMBER}-arm64
-                                """
+                                stage('Build ARM64') {
+                                    sh """
+                                        docker buildx build --platform linux/arm64 -t ${ECR_REPO}:${BUILD_NUMBER}-arm64 --load .
+                                    """
+                                }
                             }
                         )
                     } catch (err) {
-                        echo "Parallel Build/Push Error: ${err}"
+                        echo "Parallel Build Error: ${err}"
                         currentBuild.result = 'ABORTED'
-                        error("Aborting due to multi-arch build/push failure")
+                        error("Aborting due to multi-arch build failure")
+                    }
+                }
+            }
+        }
+
+        stage('Push to ECR') {
+            steps {
+                script {
+                    try {
+                        withCredentials([usernamePassword(credentialsId: 'ecr-creds', passwordVariable: 'AWS_SECRET_ACCESS_KEY', usernameVariable: 'AWS_ACCESS_KEY_ID')]) {
+                            sh """
+                                aws ecr get-login-password --region ${AWS_REGION} | docker login --username AWS --password-stdin ${ECR_REPO}
+                                docker push ${ECR_REPO}:${BUILD_NUMBER}-amd64
+                                docker push ${ECR_REPO}:${BUILD_NUMBER}-arm64
+                            """
+                        }
+                    } catch (err) {
+                        echo "Push to ECR failed: ${err}"
+                        currentBuild.result = 'ABORTED'
+                        error("Aborting pipeline due to push failure")
                     }
                 }
             }

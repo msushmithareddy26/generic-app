@@ -15,14 +15,14 @@ pipeline {
 
     stages {
 
-        // --------------------------
+
         stage('Checkout') {
             steps {
                 echo "Using Jenkins SCM checkout (no manual git clone required)"
             }
         }
 
-        // --------------------------
+
         stage('Cherry-Pick Hotfix') {
             steps {
                 script {
@@ -65,7 +65,7 @@ pipeline {
             }
         }
 
-        // --------------------------
+
         stage('Build Multi-Arch Images') {
             parallel {
                 stage('AMD64') {
@@ -98,7 +98,7 @@ pipeline {
             }
         }
 
-        // --------------------------
+
         stage('Push to ECR') {
             steps {
                 withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', credentialsId: 'ecr-creds']]) {

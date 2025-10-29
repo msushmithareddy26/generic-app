@@ -1,9 +1,12 @@
+// Ensure parameters are registered even for Multibranch pipelines
+properties([
+    parameters([
+        string(name: 'COMMIT_HASH', defaultValue: '', description: 'Hotfix commit hash to cherry-pick')
+    ])
+])
+
 pipeline {
     agent any
-
-    parameters {
-        string(name: 'COMMIT_HASH', defaultValue: '', description: 'Hotfix commit hash to cherry-pick')
-    }
 
     environment {
         ECR_REPO = "527930216402.dkr.ecr.eu-north-1.amazonaws.com/ecr-1"
@@ -12,29 +15,36 @@ pipeline {
 
     stages {
 
-stage('Clean Workspace') {
-    steps {
-        deleteDir()
-    }
-}
+        stage('Clean Workspace') {
+            steps {
+                deleteDir()
+            }
+        }
+
         stage('Checkout') {
             steps {
-                echo "Code already checked out by Jenkins from SCM"
-                sh "git fetch origin"
+                echo "Checking out code from Git"
+                // Replace with your repository URL
+                git branch: 'main', url: 'https://github.com/username/repo.git'
             }
         }
 
         stage('Git Cherry-Pick Ops') {
             steps {
                 script {
-                    try {
-                        sh "git checkout main"
-                        sh "git cherry-pick ${params.COMMIT_HASH}"
-                    } catch (err) {
-                        sh "git log -1 --oneline ${params.COMMIT_HASH} || echo 'Commit not found'"
-                        echo "Cherry-pick Error: ${err}"
-                        currentBuild.result = 'ABORTED'
-                        error("Aborting pipeline due to cherry-pick failure")
+                    if (params.COMMIT_HASH?.trim()) {
+                        try {
+                            sh "git checkout main"
+                            sh "git cherry-pick ${params.COMMIT_HASH}"
+                            echo "Cherry-pick of ${params.COMMIT_HASH} successful."
+                        } catch (err) {
+                            sh "git log -1 --oneline ${params.COMMIT_HASH} || echo 'Commit not found'"
+                            echo "Cherry-pick Error: ${err}"
+                            currentBuild.result = 'ABORTED'
+                            error("Aborting pipeline due to cherry-pick failure")
+                        }
+                    } else {
+                        echo "No commit hash provided, skipping cherry-pick."
                     }
                 }
             }
@@ -45,7 +55,7 @@ stage('Clean Workspace') {
                 script {
                     try {
                         // Ensure multi-arch builder exists
-                        sh "docker buildx create --use || true"
+                        sh "docker buildx create --name multiarch --use || docker buildx use multiarch"
 
                         // Parallel build and push
                         parallel(

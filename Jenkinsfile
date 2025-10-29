@@ -1,5 +1,6 @@
 pipeline {
     agent any
+
     environment {
         AWS_REGION = "eu-north-1"
         AWS_ACCOUNT_ID = "527930216402"
@@ -8,16 +9,27 @@ pipeline {
         IMAGE_TAG_ARM64 = "generic-app:${BUILD_NUMBER}-arm64"
         AWS_CREDENTIALS = credentials('ecr-creds')
     }
+
     parameters {
-        string(name: 'COMMIT_HASH', defaultValue: '', description: 'Hotfix commit hash')
+        string(name: 'COMMIT_HASH', defaultValue: '', description: 'Hotfix commit hash (optional)')
     }
+
     stages {
         stage('Checkout') {
             steps {
-                echo "Cloning main branch..."
-                git branch: 'main', url: 'https://github.com/msushmithareddy26/generic-app.git', credentialsId:'github-cred'
+                script {
+                    echo "Checking out main branch..."
+                    checkout([$class: 'GitSCM',
+                        branches: [[name: 'main']],
+                        userRemoteConfigs: [[
+                            url: 'https://github.com/msushmithareddy26/generic-app.git',
+                            credentialsId: 'github-cred'
+                        ]]
+                    ])
+                }
             }
         }
+
         stage('Cherry-Pick Hotfix') {
             steps {
                 script {
@@ -27,6 +39,7 @@ pipeline {
                         echo "Cherry-picking commit: ${params.COMMIT_HASH}"
                         sh "git fetch origin hotfix"
                         sh "git checkout main"
+
                         try {
                             sh "git cherry-pick ${params.COMMIT_HASH}"
                             echo "Cherry-pick applied successfully."
@@ -42,6 +55,7 @@ pipeline {
                 }
             }
         }
+
         stage('Build Multi-Arch Images') {
             parallel {
                 stage('AMD64') {
@@ -72,6 +86,7 @@ pipeline {
                 }
             }
         }
+
         stage('Push to ECR') {
             steps {
                 script {

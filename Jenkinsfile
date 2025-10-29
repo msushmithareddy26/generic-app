@@ -23,7 +23,7 @@ pipeline {
                 script {
                     if (params.COMMIT_HASH?.trim()) {
                         sh 'git config user.email "m.sushmithareddy26@gmail.com"'
-                        sh 'git config user.name "msushmitha26"'
+                        sh 'git config user.name "msushmithareddy26"'
                         echo "Cherry-picking commit: ${params.COMMIT_HASH}"
                         sh "git fetch origin hotfix"
                         sh "git checkout main"

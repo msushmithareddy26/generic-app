@@ -4,7 +4,7 @@ pipeline {
     environment {
         AWS_REGION = "eu-north-1"
         AWS_ACCOUNT_ID = "527930216402"
-        ECR_REPO = "${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/generic-app"
+        ECR_REPO = "${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/generic-repo"
         IMAGE_TAG_AMD64 = "${ECR_REPO}:${BUILD_NUMBER}-amd64"
         IMAGE_TAG_ARM64 = "${ECR_REPO}:${BUILD_NUMBER}-arm64"
     }
@@ -18,8 +18,7 @@ pipeline {
         // --------------------------
         stage('Checkout') {
             steps {
-                echo "Cloning main branch..."
-                git (branch: 'main', url: 'https://github.com/msushmithareddy26/generic-app.git', credentialsId: 'github-cred')
+                echo "Using Jenkins SCM checkout (no manual git clone required)"
             }
         }
 
@@ -114,5 +113,5 @@ pipeline {
             }
         }
 
-    } // stages
+    } 
 }

@@ -12,6 +12,11 @@ pipeline {
 
     stages {
 
+stage('Clean Workspace') {
+    steps {
+        deleteDir()
+    }
+}
         stage('Checkout') {
             steps {
                 echo "Code already checked out by Jenkins from SCM"

@@ -6,17 +6,18 @@ pipeline {
     }
 
     environment {
-        AWS_REGION = "ap-south-1"
-        AWS_ACCOUNT_ID = "YOUR_AWS_ACCOUNT_ID"
+        AWS_REGION = "eu-north-1"
+        AWS_ACCOUNT_ID = "527930216402"
         ECR_REPO = "${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/ecr-1"
         IMAGE_TAG_AMD64 = "generic-app:${BUILD_NUMBER}-amd64"
         IMAGE_TAG_ARM64 = "generic-app:${BUILD_NUMBER}-arm64"
     }
 
     stages {
+
         stage('Checkout') {
             steps {
-                echo " Cloning main branch..."
+                echo "Cloning main branch..."
                 git branch: 'main', url: 'https://github.com/msushmithareddy26/generic-app.git'
             }
         }

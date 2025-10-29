@@ -23,14 +23,8 @@ pipeline {
 
         stage('Checkout') {
             steps {
-                echo "Checking out main branch..."
-                checkout([$class: 'GitSCM',
-                    branches: [[name: 'main']],
-                    userRemoteConfigs: [[
-                        url: 'https://github.com/msushmithareddy26/generic-app.git',
-                        credentialsId: 'github-cred' // Replace with your GitHub credential ID
-                    ]]
-                ])
+                echo "Checking out source code..."
+                checkout scm
             }
         }
 

@@ -19,6 +19,7 @@ pipeline {
         stage('Checkout') {
             steps {
                 echo "Using Jenkins SCM checkout (no manual git clone required)"
+                checkout scm
             }
         }
 

@@ -15,7 +15,7 @@ pipeline {
         stage('Checkout') {
             steps {
                 echo "Cloning main branch..."
-                git branch: 'main', url: 'https://github.com/msushmithareddy26/generic-app.git'
+                git branch: 'main', url: 'https://github.com/msushmithareddy26/generic-app.git', credentialsId:'github-cred'
             }
         }
         stage('Cherry-Pick Hotfix') {

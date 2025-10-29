@@ -1,19 +1,27 @@
 pipeline {
     agent any
 
-    parameters {
-        string(name: 'COMMIT_HASH', defaultValue: '', description: 'Commit hash to cherry-pick from hotfix')
-    }
-
+    // Environment variables
     environment {
-        AWS_REGION = "eu-north-1"
-        AWS_ACCOUNT_ID = "527930216402"
+        AWS_REGION = "ap-south-1"
+        AWS_ACCOUNT_ID = "YOUR_AWS_ACCOUNT_ID" // replace with your account ID
         ECR_REPO = "${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/ecr-1"
         IMAGE_TAG_AMD64 = "generic-app:${BUILD_NUMBER}-amd64"
         IMAGE_TAG_ARM64 = "generic-app:${BUILD_NUMBER}-arm64"
     }
 
+    parameters {
+        string(name: 'HOTFIX_COMMIT', defaultValue: '', description: 'Commit hash to cherry-pick from hotfix branch')
+    }
+
     stages {
+
+        stage('Clean Workspace') {
+            steps {
+                deleteDir() // deletes all files in workspace
+                echo "Workspace cleaned."
+            }
+        }
 
         stage('Checkout') {
             steps {
@@ -22,46 +30,51 @@ pipeline {
             }
         }
 
-        stage('Git Cherry-Pick Ops') {
+        stage('Git Cherry-Pick Hotfix') {
             steps {
                 script {
                     try {
-                        sh 'git fetch origin hotfix'
-                        sh "git cherry-pick ${params.COMMIT_HASH}"
+                        echo "Cherry-picking commit ${params.HOTFIX_COMMIT} from hotfix branch..."
+                        sh "git fetch origin hotfix"
+                        sh "git checkout main"
+                        sh "git cherry-pick ${params.HOTFIX_COMMIT}"
                     } catch (err) {
-                        echo " Cherry-pick Error: ${err.getMessage()}"
-                        sh "git log -1 --oneline ${params.COMMIT_HASH} || echo 'Commit not found'"
+                        echo "Cherry-pick Error: ${err.getMessage()}"
+                        sh "git log -1 --oneline ${params.HOTFIX_COMMIT}"
                         currentBuild.result = 'ABORTED'
-                        error("Cherry-pick failed — aborting pipeline.")
+                        error("Aborting pipeline due to cherry-pick failure")
                     }
                 }
             }
         }
 
-        stage('Parallel Build Images') {
+        stage('Build Multi-Arch Images') {
+            failFast true // abort all if any parallel stage fails
             parallel {
-                stage('AMD64') {
+
+                stage('Build AMD64') {
                     steps {
                         script {
                             try {
                                 sh "docker buildx build --platform linux/amd64 -t ${IMAGE_TAG_AMD64} --load ."
                             } catch (err) {
-                                echo " Parallel Build Error in AMD64: ${err}"
+                                echo "Parallel Build Error in AMD64: ${err}"
                                 currentBuild.result = 'ABORTED'
-                                error("AMD64 build failed.")
+                                error("Aborting pipeline due to AMD64 build failure")
                             }
                         }
                     }
                 }
-                stage('ARM64') {
+
+                stage('Build ARM64') {
                     steps {
                         script {
                             try {
                                 sh "docker buildx build --platform linux/arm64 -t ${IMAGE_TAG_ARM64} --load ."
                             } catch (err) {
-                                echo " Parallel Build Error in ARM64: ${err}"
+                                echo "Parallel Build Error in ARM64: ${err}"
                                 currentBuild.result = 'ABORTED'
-                                error("ARM64 build failed.")
+                                error("Aborting pipeline due to ARM64 build failure")
                             }
                         }
                     }
@@ -70,23 +83,39 @@ pipeline {
         }
 
         stage('Push to ECR') {
-            when { expression { currentBuild.resultIsBetterOrEqualTo('SUCCESS') } }
             steps {
-                echo " Pushing images to ECR..."
-                sh """
-                    aws ecr get-login-password --region ${AWS_REGION} | docker login --username AWS --password-stdin ${ECR_REPO}
-                    docker tag ${IMAGE_TAG_AMD64} ${ECR_REPO}:${BUILD_NUMBER}-amd64
-                    docker tag ${IMAGE_TAG_ARM64} ${ECR_REPO}:${BUILD_NUMBER}-arm64
-                    docker push ${ECR_REPO}:${BUILD_NUMBER}-amd64
-                    docker push ${ECR_REPO}:${BUILD_NUMBER}-arm64
-                """
+                script {
+                    try {
+                        // Configure AWS CLI with credentials
+                        sh """
+                            aws configure set aws_access_key_id YOUR_AWS_ACCESS_KEY
+                            aws configure set aws_secret_access_key YOUR_AWS_SECRET_KEY
+                            aws configure set default.region ${AWS_REGION}
+                        """
+
+                        // Login to ECR
+                        sh "aws ecr get-login-password --region ${AWS_REGION} | docker login --username AWS --password-stdin ${ECR_REPO}"
+
+                        // Push images
+                        sh "docker tag ${IMAGE_TAG_AMD64} ${ECR_REPO}:${BUILD_NUMBER}-amd64"
+                        sh "docker tag ${IMAGE_TAG_ARM64} ${ECR_REPO}:${BUILD_NUMBER}-arm64"
+                        sh "docker push ${ECR_REPO}:${BUILD_NUMBER}-amd64"
+                        sh "docker push ${ECR_REPO}:${BUILD_NUMBER}-arm64"
+
+                        echo "Images pushed to ECR successfully."
+                    } catch (err) {
+                        echo "ECR Push Error: ${err}"
+                        currentBuild.result = 'ABORTED'
+                        error("Aborting pipeline due to ECR push failure")
+                    }
+                }
             }
         }
     }
 
     post {
-        failure { echo " Pipeline failed." }
-        aborted { echo " Pipeline aborted." }
-        success { echo " Pipeline succeeded!" }
+        always {
+            echo "Pipeline finished with status: ${currentBuild.result}"
+        }
     }
 }

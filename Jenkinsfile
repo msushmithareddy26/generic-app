@@ -1,10 +1,9 @@
 pipeline {
     agent any
 
-    // Environment variables
     environment {
         AWS_REGION = "eu-north-1"
-        AWS_ACCOUNT_ID = "527930216402" 
+        AWS_ACCOUNT_ID = "527930216402"
         ECR_REPO = "${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/ecr-1"
         IMAGE_TAG_AMD64 = "generic-app:${BUILD_NUMBER}-amd64"
         IMAGE_TAG_ARM64 = "generic-app:${BUILD_NUMBER}-arm64"
@@ -15,10 +14,9 @@ pipeline {
     }
 
     stages {
-
         stage('Clean Workspace') {
             steps {
-                deleteDir() // deletes all files in workspace
+                deleteDir()
                 echo "Workspace cleaned."
             }
         }
@@ -37,10 +35,11 @@ pipeline {
                         echo "Cherry-picking commit ${params.HOTFIX_COMMIT} from hotfix branch..."
                         sh "git fetch origin hotfix"
                         sh "git checkout main"
+                        sh "git reset --hard"
                         sh "git cherry-pick ${params.HOTFIX_COMMIT}"
                     } catch (err) {
                         echo "Cherry-pick Error: ${err.getMessage()}"
-                        sh "git log -1 --oneline ${params.HOTFIX_COMMIT}"
+                        sh "git log -1 --oneline ${params.HOTFIX_COMMIT} || echo 'Commit not found'"
                         currentBuild.result = 'ABORTED'
                         error("Aborting pipeline due to cherry-pick failure")
                     }
@@ -49,9 +48,13 @@ pipeline {
         }
 
         stage('Build Multi-Arch Images') {
-            failFast true 
-            parallel {
+            steps {
+                script {
+                    sh "docker buildx create --use || true"
+                }
+            }
 
+            parallel {
                 stage('Build AMD64') {
                     steps {
                         script {
@@ -86,22 +89,11 @@ pipeline {
             steps {
                 script {
                     try {
-
-                        sh """
-                            aws configure set aws_access_key_id YOUR_AWS_ACCESS_KEY
-                            aws configure set aws_secret_access_key YOUR_AWS_SECRET_KEY
-                            aws configure set default.region ${AWS_REGION}
-                        """
-
-
                         sh "aws ecr get-login-password --region ${AWS_REGION} | docker login --username AWS --password-stdin ${ECR_REPO}"
-
-
                         sh "docker tag ${IMAGE_TAG_AMD64} ${ECR_REPO}:${BUILD_NUMBER}-amd64"
                         sh "docker tag ${IMAGE_TAG_ARM64} ${ECR_REPO}:${BUILD_NUMBER}-arm64"
                         sh "docker push ${ECR_REPO}:${BUILD_NUMBER}-amd64"
                         sh "docker push ${ECR_REPO}:${BUILD_NUMBER}-arm64"
-
                         echo "Images pushed to ECR successfully."
                     } catch (err) {
                         echo "ECR Push Error: ${err}"

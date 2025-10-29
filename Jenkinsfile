@@ -3,8 +3,8 @@ pipeline {
 
     // Environment variables
     environment {
-        AWS_REGION = "ap-south-1"
-        AWS_ACCOUNT_ID = "YOUR_AWS_ACCOUNT_ID" // replace with your account ID
+        AWS_REGION = "eu-north-1"
+        AWS_ACCOUNT_ID = "527930216402" 
         ECR_REPO = "${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/ecr-1"
         IMAGE_TAG_AMD64 = "generic-app:${BUILD_NUMBER}-amd64"
         IMAGE_TAG_ARM64 = "generic-app:${BUILD_NUMBER}-arm64"
@@ -49,7 +49,7 @@ pipeline {
         }
 
         stage('Build Multi-Arch Images') {
-            failFast true // abort all if any parallel stage fails
+            failFast true 
             parallel {
 
                 stage('Build AMD64') {
@@ -86,17 +86,17 @@ pipeline {
             steps {
                 script {
                     try {
-                        // Configure AWS CLI with credentials
+
                         sh """
                             aws configure set aws_access_key_id YOUR_AWS_ACCESS_KEY
                             aws configure set aws_secret_access_key YOUR_AWS_SECRET_KEY
                             aws configure set default.region ${AWS_REGION}
                         """
 
-                        // Login to ECR
+
                         sh "aws ecr get-login-password --region ${AWS_REGION} | docker login --username AWS --password-stdin ${ECR_REPO}"
 
-                        // Push images
+
                         sh "docker tag ${IMAGE_TAG_AMD64} ${ECR_REPO}:${BUILD_NUMBER}-amd64"
                         sh "docker tag ${IMAGE_TAG_ARM64} ${ECR_REPO}:${BUILD_NUMBER}-arm64"
                         sh "docker push ${ECR_REPO}:${BUILD_NUMBER}-amd64"
